@@ -15,18 +15,28 @@ let clickTimer = null;
 let tooltip = null;
 let previewMarker = null;
 const LONG_CLICK_DURATION = 800; // 0.8 segundos
+let isTouchDevice = 'ontouchstart' in window;
 
 // Inicialización del mapa
 window.onload = async () => {
   document.getElementById('loading-overlay').style.display = 'flex';
   
   try {
-    mapa = L.map('mapa').setView([0, 0], 2);
+    mapa = L.map('mapa', {
+      tap: !isTouchDevice, // Mejor compatibilidad táctil
+      touchZoom: true,
+      scrollWheelZoom: true,
+      doubleClickZoom: true,
+      boxZoom: true,
+      dragging: true
+    }).setView([0, 0], 2);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap'
+      attribution: '&copy; OpenStreetMap',
+      maxZoom: 19
     }).addTo(mapa);
 
-    // Configurar eventos del mapa para clic prolongado
+    // Configurar eventos del mapa
     configurarEventosMapa();
 
     direcciones.forEach(d => agregarMarcador(d));
@@ -46,13 +56,21 @@ function configurarEventosMapa() {
   tooltip.className = 'map-tooltip';
   document.body.appendChild(tooltip);
 
-  // Eventos para clic prolongado
-  mapa.on('mousedown', iniciarClickLargo);
-  mapa.on('mouseup', cancelarClickLargo);
-  mapa.on('mouseout', cancelarClickLargo);
-  mapa.on('mousemove', moverMouseEnMapa);
+  // Eventos para diferentes dispositivos
+  if (isTouchDevice) {
+    // Eventos para pantallas táctiles
+    mapa.on('touchstart', iniciarClickLargo);
+    mapa.on('touchend', cancelarClickLargo);
+    mapa.on('touchmove', moverTouchEnMapa);
+  } else {
+    // Eventos para desktop
+    mapa.on('mousedown', iniciarClickLargo);
+    mapa.on('mouseup', cancelarClickLargo);
+    mapa.on('mouseout', cancelarClickLargo);
+    mapa.on('mousemove', moverMouseEnMapa);
+  }
   
-  // Evento para clic simple (solo para limpiar selección)
+  // Evento para limpiar selección
   mapa.on('click', () => {
     if (previewMarker) {
       mapa.removeLayer(previewMarker);
@@ -74,7 +92,7 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Algoritmo de optimización de ruta dinámica
+// Algoritmo de optimización de ruta
 function optimizarRutaDinamica(posicionInicial) {
   if (direcciones.length === 0) return [];
 
@@ -83,7 +101,6 @@ function optimizarRutaDinamica(posicionInicial) {
     const entregaActiva = direcciones[entregaActivaIndex];
     const pedidosRestantes = direcciones.filter((_, i) => i !== entregaActivaIndex);
     
-    // Optimizar solo las entregas restantes
     const rutaRestante = optimizarRutaBasica(posicionInicial, pedidosRestantes);
     return [entregaActiva, ...rutaRestante];
   }
@@ -91,7 +108,6 @@ function optimizarRutaDinamica(posicionInicial) {
   return optimizarRutaBasica(posicionInicial, direcciones);
 }
 
-// Algoritmo básico del vecino más cercano
 function optimizarRutaBasica(posicionInicial, puntos) {
   if (puntos.length === 0) return [];
 
@@ -127,7 +143,6 @@ function optimizarRutaBasica(posicionInicial, puntos) {
 
 // Mostrar ruta real usando OSRM
 async function mostrarRutaRealOptimizada(ruta) {
-  // Limpiar ruta anterior
   if (polyline) {
     mapa.removeLayer(polyline);
     polyline = null;
@@ -138,11 +153,8 @@ async function mostrarRutaRealOptimizada(ruta) {
   try {
     const perfil = 'driving';
     let url = `https://router.project-osrm.org/route/v1/${perfil}/`;
-    
-    // Siempre comenzar desde la posición actual
     url += `${posicionActual.lng},${posicionActual.lat}`;
     
-    // Agregar todos los puntos de entrega
     for (const punto of ruta) {
       url += `;${punto.lng},${punto.lat}`;
     }
@@ -155,10 +167,8 @@ async function mostrarRutaRealOptimizada(ruta) {
     if (data.routes && data.routes.length > 0) {
       const rutaData = data.routes[0];
       
-      // Mostrar información de la ruta
       mostrarInformacionRuta(rutaData.distance, rutaData.duration);
       
-      // Dibujar la ruta en el mapa
       polyline = L.geoJSON(rutaData.geometry, {
         style: {
           color: '#3498db',
@@ -168,10 +178,8 @@ async function mostrarRutaRealOptimizada(ruta) {
         }
       }).addTo(mapa);
 
-      // Ajustar vista del mapa para mostrar toda la ruta
       mapa.fitBounds(polyline.getBounds());
       
-      // Mostrar próxima entrega
       if (ruta.length > 0) {
         document.getElementById('proxima-entrega').innerHTML = `
           <strong>Próxima entrega:</strong> ${ruta[0].direccion}
@@ -180,7 +188,6 @@ async function mostrarRutaRealOptimizada(ruta) {
     }
   } catch (error) {
     console.error("Error al obtener ruta:", error);
-    // Fallback: mostrar línea recta
     const coordenadas = [[posicionActual.lat, posicionActual.lng], ...ruta.map(p => [p.lat, p.lng])];
     polyline = L.polyline(coordenadas, {
       color: '#3498db',
@@ -206,13 +213,10 @@ async function mostrarRutaRealOptimizada(ruta) {
 async function actualizarRutaEnTiempoReal() {
   if (!posicionActual || direcciones.length === 0) return;
   
-  // 1. Optimizar el orden de las entregas
   rutaOptimizada = optimizarRutaDinamica(posicionActual);
   direcciones = [...rutaOptimizada];
   guardarLocal();
   mostrarDirecciones();
-  
-  // 2. Calcular y mostrar la ruta real
   await mostrarRutaRealOptimizada(rutaOptimizada);
 }
 
@@ -220,7 +224,7 @@ async function actualizarRutaEnTiempoReal() {
 document.getElementById("iniciar-gps").onclick = function() {
   if (watchId) {
     detenerSeguimientoGPS();
-    this.textContent = "Activar GPS en Vivo";
+    this.textContent = "Activar GPS";
     this.classList.remove("btn-danger");
     this.classList.add("btn-success");
   } else {
@@ -251,7 +255,6 @@ function iniciarSeguimientoGPS() {
   actualizarEstadoGPS(true);
   document.getElementById('optimizar-ruta').disabled = false;
 
-  // Actualización más frecuente para mejor precisión
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
       posicionActual = {
@@ -259,7 +262,6 @@ function iniciarSeguimientoGPS() {
         lng: pos.coords.longitude
       };
 
-      // Actualizar marcador de usuario
       if (!marcadorUsuario) {
         marcadorUsuario = L.marker([posicionActual.lat, posicionActual.lng], {
           icon: L.icon({
@@ -272,7 +274,6 @@ function iniciarSeguimientoGPS() {
         marcadorUsuario.setLatLng([posicionActual.lat, posicionActual.lng]);
       }
 
-      // Centrar mapa en la posición actual
       mapa.setView([posicionActual.lat, posicionActual.lng], 15);
     },
     (err) => {
@@ -286,42 +287,42 @@ function iniciarSeguimientoGPS() {
     }
   );
 
-  // Iniciar intervalo para actualización dinámica de ruta
   intervaloActualizacion = setInterval(() => {
     if (posicionActual && direcciones.length > 0) {
       actualizarRutaEnTiempoReal();
       verificarProximidadEntregas(posicionActual);
     }
-  }, 10000); // Actualizar cada 10 segundos
+  }, 10000);
 
-  // Primera actualización inmediata
   if (posicionActual && direcciones.length > 0) {
     actualizarRutaEnTiempoReal();
   }
 }
 
-// Funciones para selección en mapa (clic prolongado)
+// Funciones para selección en mapa
 function iniciarClickLargo(e) {
-  if (clickTimer !== null || e.originalEvent.button !== 0) return;
+  if (clickTimer !== null) return;
+  
+  const latlng = isTouchDevice ? 
+    mapa.containerPointToLatLng(L.point(e.touches[0].clientX, e.touches[0].clientY)) :
+    e.latlng;
   
   clickTimer = setTimeout(() => {
     clickTimer = null;
-    confirmarAgregarPunto(e.latlng);
+    confirmarAgregarPunto(latlng);
   }, LONG_CLICK_DURATION);
   
-  // Mostrar marcador de vista previa
   if (previewMarker) {
     mapa.removeLayer(previewMarker);
   }
-  previewMarker = L.circleMarker(e.latlng, {
+  previewMarker = L.circleMarker(latlng, {
     radius: 8,
     className: 'map-marker-preview'
   }).addTo(mapa);
   
-  // Mostrar tooltip
   tooltip.style.display = 'block';
   tooltip.textContent = 'Suelta para agregar esta ubicación';
-  actualizarPosicionTooltip(e.originalEvent);
+  actualizarPosicionTooltip(e);
 }
 
 function cancelarClickLargo() {
@@ -338,16 +339,31 @@ function cancelarClickLargo() {
 
 function moverMouseEnMapa(e) {
   if (clickTimer !== null) {
-    actualizarPosicionTooltip(e.originalEvent);
+    actualizarPosicionTooltip(e);
     if (previewMarker) {
       previewMarker.setLatLng(e.latlng);
     }
   }
 }
 
+function moverTouchEnMapa(e) {
+  if (clickTimer !== null && e.touches.length > 0) {
+    const latlng = mapa.containerPointToLatLng(L.point(e.touches[0].clientX, e.touches[0].clientY));
+    actualizarPosicionTooltip(e);
+    if (previewMarker) {
+      previewMarker.setLatLng(latlng);
+    }
+  }
+}
+
 function actualizarPosicionTooltip(event) {
-  tooltip.style.left = (event.clientX + 15) + 'px';
-  tooltip.style.top = (event.clientY + 15) + 'px';
+  if (isTouchDevice && event.touches && event.touches.length > 0) {
+    tooltip.style.left = (event.touches[0].clientX + 15) + 'px';
+    tooltip.style.top = (event.touches[0].clientY + 15) + 'px';
+  } else {
+    tooltip.style.left = (event.clientX + 15) + 'px';
+    tooltip.style.top = (event.clientY + 15) + 'px';
+  }
 }
 
 async function confirmarAgregarPunto(latlng) {
@@ -357,7 +373,6 @@ async function confirmarAgregarPunto(latlng) {
     previewMarker = null;
   }
 
-  // Obtener la dirección usando geocodificación inversa
   const direccion = await obtenerDireccionDesdeCoordenadas(latlng.lat, latlng.lng);
   
   if (direccion) {
@@ -376,7 +391,6 @@ async function confirmarAgregarPunto(latlng) {
       agregarMarcador(nuevaEntrega);
       mostrarDirecciones();
       
-      // Si el GPS está activo, recalcular ruta
       if (posicionActual) {
         await actualizarRutaEnTiempoReal();
       }
@@ -384,7 +398,7 @@ async function confirmarAgregarPunto(latlng) {
   }
 }
 
-// Función para geocodificación inversa (coordenadas -> dirección)
+// Función para geocodificación inversa
 async function obtenerDireccionDesdeCoordenadas(lat, lng) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
   try {
@@ -392,7 +406,6 @@ async function obtenerDireccionDesdeCoordenadas(lat, lng) {
     const data = await res.json();
     
     if (data.address) {
-      // Construir una dirección legible
       const address = data.address;
       let direccion = '';
       
@@ -412,25 +425,20 @@ async function obtenerDireccionDesdeCoordenadas(lat, lng) {
   return "Ubicación en el mapa";
 }
 
-// [Resto de funciones auxiliares... (mostrarDirecciones, agregarMarcador, guardarLocal, etc.)]
 // Verificar proximidad a puntos de entrega
 function verificarProximidadEntregas(posicion) {
   const audio = new Audio("sonido.mp3");
   
-  // Solo verificar si hay una ruta optimizada
   if (rutaOptimizada.length === 0) return;
   
-  // Comprobar la entrega más cercana (primera en la ruta optimizada)
   const entrega = rutaOptimizada[0];
   const dist = calcularDistancia(posicion.lat, posicion.lng, entrega.lat, entrega.lng);
   
-  if (dist < 150 && !entrega.alertado) { // Radio de 150 metros
-    // Marcar como entrega activa
+  if (dist < 150 && !entrega.alertado) {
     entregaActivaIndex = direcciones.findIndex(d => 
       d.lat === entrega.lat && d.lng === entrega.lng
     );
     
-    // Notificar al usuario
     audio.play().catch(() => {});
     entrega.alertado = true;
     guardarLocal();
@@ -438,13 +446,11 @@ function verificarProximidadEntregas(posicion) {
     
     const confirmar = confirm(`¡Estás cerca de: ${entrega.direccion}!\n¿Quieres marcarla como entrega activa?`);
     if (confirmar) {
-      // Recalcular ruta manteniendo esta entrega como prioritaria
       actualizarRutaEnTiempoReal();
     } else {
       entregaActivaIndex = null;
     }
   } else if (dist > 200 && entregaActivaIndex !== null) {
-    // Si nos alejamos lo suficiente, quitar prioridad
     entregaActivaIndex = null;
     actualizarRutaEnTiempoReal();
   }
@@ -462,7 +468,6 @@ document.getElementById("optimizar-ruta").onclick = async () => {
     return;
   }
   
-  // Quitar cualquier prioridad de entrega activa
   entregaActivaIndex = null;
   await actualizarRutaEnTiempoReal();
   alert("Ruta reoptimizada desde tu posición actual");
@@ -484,7 +489,6 @@ document.getElementById("agregar").onclick = async () => {
     mostrarDirecciones();
     input.value = "";
     
-    // Si el GPS está activo, recalcular ruta
     if (posicionActual) {
       await actualizarRutaEnTiempoReal();
     }
@@ -496,7 +500,6 @@ document.getElementById("agregar").onclick = async () => {
 // Marcar entrega como completada
 function marcarEntregada(index) {
   if (confirm(`¿Marcar "${direcciones[index].direccion}" como entregada?`)) {
-    // Si era la entrega activa, limpiar el estado
     if (entregaActivaIndex === index) {
       entregaActivaIndex = null;
     }
@@ -588,7 +591,6 @@ function actualizarEstadoGPS(activo) {
   }
 }
 
-// Mostrar información de la ruta
 function mostrarInformacionRuta(distanciaMetros, duracionSegundos) {
   const distanciaKm = (distanciaMetros / 1000).toFixed(1);
   const duracionMinutos = Math.ceil(duracionSegundos / 60);

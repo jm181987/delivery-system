@@ -2,16 +2,19 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Gestor de Entregas con Mapa Interactivo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Gestor de Entregas Táctil</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
       background-color: #f8f9fa;
+      touch-action: manipulation;
     }
     #mapa {
-      height: 500px;
+      height: 60vh;
+      min-height: 400px;
       border-radius: 12px;
       box-shadow: 0 0 12px rgba(0,0,0,0.1);
       margin-bottom: 1rem;
@@ -31,6 +34,7 @@
     }
     .btn-sm {
       font-size: 0.8rem;
+      padding: 0.25rem 0.5rem;
     }
     .ruta-real {
       stroke: #3498db;
@@ -100,7 +104,7 @@
       position: absolute;
       bottom: 10px;
       left: 10px;
-      background: rgba(255,255,255,0.8);
+      background: rgba(255,255,255,0.9);
       padding: 5px 10px;
       border-radius: 3px;
       z-index: 1000;
@@ -121,13 +125,30 @@
       font-size: 1.5rem;
       display: none;
     }
+    .btn-mobile {
+      padding: 0.5rem;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 768px) {
+      #mapa {
+        height: 50vh;
+      }
+      .btn-mobile {
+        padding: 0.75rem;
+        font-size: 1rem;
+      }
+      .long-click-instruction {
+        font-size: 11px;
+        padding: 3px 6px;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="loading-overlay">Cargando mapa...</div>
   
-  <div class="container py-4">
-    <h2 class="mb-3 text-center">Gestor de Entregas con Mapa Interactivo</h2>
+  <div class="container py-2 py-md-4">
+    <h2 class="mb-3 text-center">Gestor de Entregas</h2>
     <div id="mapa"></div>
     
     <div class="info-ruta">
@@ -141,23 +162,23 @@
 
     <div class="mb-3 row g-2">
       <div class="col-md-5">
-        <input type="text" id="direccion" class="form-control" placeholder="Agregar dirección de entrega" />
+        <input type="text" id="direccion" class="form-control" placeholder="Agregar dirección" />
       </div>
       <div class="col-md-2 d-grid">
-        <button id="agregar" class="btn btn-primary">Agregar</button>
+        <button id="agregar" class="btn btn-primary btn-mobile">Agregar</button>
       </div>
       <div class="col-md-2 d-grid">
-        <button id="optimizar-ruta" class="btn btn-warning" disabled>Reoptimizar</button>
+        <button id="optimizar-ruta" class="btn btn-warning btn-mobile" disabled>Optimizar</button>
       </div>
       <div class="col-md-3 d-grid">
-        <button id="iniciar-gps" class="btn btn-success">Activar GPS en Vivo</button>
+        <button id="iniciar-gps" class="btn btn-success btn-mobile">Activar GPS</button>
       </div>
     </div>
     <div id="lista-direcciones"></div>
   </div>
 
-  <div class="long-click-instruction d-none d-md-block">
-    Mantén presionado en el mapa para agregar una entrega
+  <div class="long-click-instruction">
+    Mantén presionado en el mapa para agregar
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
