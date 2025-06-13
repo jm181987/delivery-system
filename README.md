@@ -1,5 +1,5 @@
 Gestor de Entregas Inteligente con Optimización de Rutas
-https://screenshot.png
+
 
 📌 Descripción
 Aplicación web para gestión y optimización de rutas de entrega en tiempo real, con soporte para dispositivos móviles y desktop. Utiliza algoritmos de optimización geográfica y geolocalización para calcular la ruta más eficiente, considerando:
