@@ -1,6 +1,7 @@
 let direcciones = JSON.parse(localStorage.getItem("entregas")) || [];
 let mapa;
 let marcadores = [];
+let marcadorUsuario = null;
 
 window.onload = () => {
   mapa = L.map('mapa').setView([0, 0], 2);
@@ -38,6 +39,20 @@ document.getElementById("iniciar-gps").onclick = () => {
 
   navigator.geolocation.watchPosition((pos) => {
     const { latitude, longitude } = pos.coords;
+
+    // Mostrar o mover el marcador del usuario
+    if (!marcadorUsuario) {
+      marcadorUsuario = L.marker([latitude, longitude], {
+        icon: L.icon({
+          iconUrl: "https://cdn-icons-png.flaticon.com/512/61/61168.png",
+          iconSize: [32, 32],
+          iconAnchor: [16, 32]
+        })
+      }).addTo(mapa).bindPopup("Tú estás aquí").openPopup();
+    } else {
+      marcadorUsuario.setLatLng([latitude, longitude]);
+    }
+
     direcciones.forEach((d, i) => {
       const dist = calcularDistancia(latitude, longitude, d.lat, d.lng);
       if (dist < 100 && !d.entregado) {
@@ -46,6 +61,8 @@ document.getElementById("iniciar-gps").onclick = () => {
         d.entregado = true;
       }
     });
+
+    // Limpiar entregas
     direcciones = direcciones.filter(d => !d.entregado);
     marcadores = marcadores.filter((m, i) => !direcciones[i]?.entregado);
     guardarLocal();
