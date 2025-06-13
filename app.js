@@ -1,8 +1,10 @@
- let direcciones = JSON.parse(localStorage.getItem("entregas")) || [];
+let direcciones = JSON.parse(localStorage.getItem("entregas")) || [];
 let mapa;
 let marcadores = [];
 let marcadorUsuario = null;
 let rutaOptimizada = [];
+let polyline = null;
+let controlRuta = null;
 
 window.onload = () => {
   mapa = L.map('mapa').setView([0, 0], 2);
@@ -14,7 +16,7 @@ window.onload = () => {
   mostrarDirecciones();
 };
 
-// Función para optimizar rutas
+// Función para optimizar el orden de entregas
 function optimizarRuta(posicionActual) {
   if (direcciones.length === 0) return [];
 
@@ -48,28 +50,145 @@ function optimizarRuta(posicionActual) {
   return ruta;
 }
 
-// Evento para optimizar ruta manualmente
-document.getElementById("optimizar-ruta").onclick = () => {
+// Función para mostrar ruta real con OSRM
+async function mostrarRutaRealOptimizada(ruta) {
+  // Limpiar ruta anterior
+  if (polyline) {
+    mapa.removeLayer(polyline);
+    polyline = null;
+  }
+  if (controlRuta) {
+    mapa.removeControl(controlRuta);
+    controlRuta = null;
+  }
+
+  if (ruta.length < 1) return;
+
+  // Obtener coordenadas
+  let coordenadas = ruta.map(punto => [punto.lat, punto.lng]);
+  let inicio = null;
+
+  // Agregar ubicación del usuario si está disponible
+  if (marcadorUsuario) {
+    const userLatLng = marcadorUsuario.getLatLng();
+    inicio = { lat: userLatLng.lat, lng: userLatLng.lng };
+    coordenadas.unshift([inicio.lat, inicio.lng]);
+  } else {
+    inicio = { lat: coordenadas[0][0], lng: coordenadas[0][1] };
+  }
+
+  try {
+    const perfil = 'driving'; // 'walking', 'cycling'
+    let url = `https://router.project-osrm.org/route/v1/${perfil}/`;
+    
+    // Construir URL con todas las coordenadas
+    url += `${inicio.lng},${inicio.lat}`;
+    for (let i = 1; i < coordenadas.length; i++) {
+      url += `;${coordenadas[i][1]},${coordenadas[i][0]}`;
+    }
+    url += '?overview=full&geometries=geojson&steps=true';
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.routes && data.routes.length > 0) {
+      const rutaData = data.routes[0];
+      
+      // Mostrar información de la ruta
+      mostrarInformacionRuta(rutaData.distance, rutaData.duration);
+      
+      // Dibujar la ruta en el mapa
+      polyline = L.geoJSON(data.routes[0].geometry, {
+        style: {
+          color: '#3498db',
+          weight: 5,
+          opacity: 0.7,
+          lineJoin: 'round'
+        }
+      }).addTo(mapa);
+
+      // Añadir marcadores especiales
+      if (marcadorUsuario) {
+        L.marker([inicio.lat, inicio.lng], {
+          icon: L.divIcon({
+            className: 'punto-inicio',
+            html: 'Inicio',
+            iconSize: [20, 20]
+          })
+        }).addTo(mapa).bindPopup("Punto de inicio");
+      }
+
+      // Ajustar vista del mapa
+      mapa.fitBounds(polyline.getBounds());
+    }
+  } catch (error) {
+    console.error("Error al obtener ruta:", error);
+    // Fallback a línea recta si la API falla
+    polyline = L.polyline(coordenadas, {
+      color: '#3498db',
+      weight: 3,
+      opacity: 0.7,
+      dashArray: '5, 5'
+    }).addTo(mapa);
+    document.getElementById('info-ruta').innerHTML = 
+      'No se pudo calcular la ruta exacta. Mostrando línea recta entre puntos.';
+  }
+}
+
+function mostrarInformacionRuta(distanciaMetros, duracionSegundos) {
+  const distanciaKm = (distanciaMetros / 1000).toFixed(1);
+  const duracionMinutos = Math.ceil(duracionSegundos / 60);
+  
+  document.getElementById('info-ruta').innerHTML = `
+    <div>Distancia total: <strong>${distanciaKm} km</strong></div>
+    <div>Tiempo estimado: <strong>${duracionMinutos} minutos</strong></div>
+    <div>Número de paradas: <strong>${direcciones.length}</strong></div>
+  `;
+}
+
+// Eventos principales
+document.getElementById("optimizar-ruta").onclick = async () => {
   if (direcciones.length < 2) {
     alert("Necesitas al menos 2 direcciones para optimizar");
     return;
   }
   
+  let puntoInicio;
   if (marcadorUsuario) {
     const latLng = marcadorUsuario.getLatLng();
-    rutaOptimizada = optimizarRuta({ lat: latLng.lat, lng: latLng.lng });
+    puntoInicio = { lat: latLng.lat, lng: latLng.lng };
   } else {
     const centro = mapa.getCenter();
-    rutaOptimizada = optimizarRuta({ lat: centro.lat, lng: centro.lng });
+    puntoInicio = { lat: centro.lat, lng: centro.lng };
   }
   
+  rutaOptimizada = optimizarRuta(puntoInicio);
   direcciones = [...rutaOptimizada];
   guardarLocal();
   mostrarDirecciones();
-  alert("Ruta optimizada con éxito!");
+  await mostrarRutaRealOptimizada(rutaOptimizada);
 };
 
-// Evento para agregar direcciones
+document.getElementById("iniciar-gps").onclick = async () => {
+  if (!navigator.geolocation) {
+    alert("Geolocalización no disponible");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const { latitude, longitude } = pos.coords;
+    const posicionActual = { lat: latitude, lng: longitude };
+    
+    rutaOptimizada = optimizarRuta(posicionActual);
+    direcciones = [...rutaOptimizada];
+    guardarLocal();
+    mostrarDirecciones();
+    await mostrarRutaRealOptimizada(rutaOptimizada);
+    
+    iniciarSeguimientoGPS(posicionActual);
+  }, console.error, { enableHighAccuracy: true });
+};
+
 document.getElementById("agregar").onclick = async () => {
   const input = document.getElementById("direccion");
   const direccion = input.value.trim();
@@ -89,27 +208,7 @@ document.getElementById("agregar").onclick = async () => {
   }
 };
 
-// Evento para iniciar GPS
-document.getElementById("iniciar-gps").onclick = () => {
-  if (!navigator.geolocation) {
-    alert("Geolocalización no disponible");
-    return;
-  }
-
-  navigator.geolocation.getCurrentPosition((pos) => {
-    const { latitude, longitude } = pos.coords;
-    const posicionActual = { lat: latitude, lng: longitude };
-    
-    rutaOptimizada = optimizarRuta(posicionActual);
-    direcciones = [...rutaOptimizada];
-    guardarLocal();
-    mostrarDirecciones();
-    
-    iniciarSeguimientoGPS(posicionActual);
-  }, console.error, { enableHighAccuracy: true });
-};
-
-// Función para seguimiento GPS
+// Funciones auxiliares
 function iniciarSeguimientoGPS(posicionInicial) {
   const audio = new Audio("sonido.mp3");
   
@@ -144,7 +243,6 @@ function iniciarSeguimientoGPS(posicionInicial) {
   }, console.error, { enableHighAccuracy: true });
 }
 
-// Funciones auxiliares
 function mostrarDirecciones() {
   const contenedor = document.getElementById("lista-direcciones");
   contenedor.innerHTML = "";
@@ -153,6 +251,7 @@ function mostrarDirecciones() {
     card.className = "entrega-card";
     card.innerHTML = `
       <strong>${d.direccion}</strong><br>
+      <span class="text-muted">Orden: ${i+1}</span><br>
       <button class="btn btn-danger btn-sm mt-2" onclick="marcarEntregada(${i})">Marcar como Entregada</button>
     `;
     contenedor.appendChild(card);
@@ -166,6 +265,24 @@ function marcarEntregada(index) {
     marcadores.splice(index, 1);
     guardarLocal();
     mostrarDirecciones();
+    
+    if (direcciones.length > 1) {
+      let puntoInicio;
+      if (marcadorUsuario) {
+        const latLng = marcadorUsuario.getLatLng();
+        puntoInicio = { lat: latLng.lat, lng: latLng.lng };
+      } else {
+        const centro = mapa.getCenter();
+        puntoInicio = { lat: centro.lat, lng: centro.lng };
+      }
+      
+      rutaOptimizada = optimizarRuta(puntoInicio);
+      mostrarRutaRealOptimizada(rutaOptimizada);
+    } else if (polyline) {
+      mapa.removeLayer(polyline);
+      polyline = null;
+      document.getElementById('info-ruta').innerHTML = 'Agrega más direcciones para calcular una ruta';
+    }
   }
 }
 
@@ -174,7 +291,12 @@ function guardarLocal() {
 }
 
 function agregarMarcador(d) {
-  let marker = L.marker([d.lat, d.lng]).addTo(mapa).bindPopup(d.direccion);
+  let marker = L.marker([d.lat, d.lng], {
+    icon: L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/447/447031.png",
+      iconSize: [25, 25]
+    })
+  }).addTo(mapa).bindPopup(d.direccion);
   marcadores.push(marker);
   mapa.setView([d.lat, d.lng], 14);
 }
