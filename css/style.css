@@ -1,0 +1,32 @@
+body {
+  font-family: Arial, sans-serif;
+  max-width: 1000px;
+  margin: 20px auto;
+  padding: 0 20px;
+  background: #f5f5f5;
+}
+input {
+  width: 60%;
+  padding: 10px;
+  margin-right: 10px;
+}
+button {
+  padding: 10px;
+  margin-top: 10px;
+}
+ul {
+  margin-top: 20px;
+  list-style: none;
+  padding: 0;
+}
+li {
+  background: #fff;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-left: 5px solid #28a745;
+}
+#mapa {
+  height: 400px;
+  margin-top: 20px;
+  border: 2px solid #ccc;
+}
