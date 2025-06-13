@@ -21,6 +21,7 @@ document.getElementById("agregar").onclick = async () => {
   const datos = await geocodificar(direccion);
   if (datos) {
     datos.entregado = false;
+    datos.alertado = false;
     direcciones.push(datos);
     guardarLocal();
     agregarMarcador(datos);
@@ -37,10 +38,11 @@ document.getElementById("iniciar-gps").onclick = () => {
     return;
   }
 
+  const audio = new Audio("sonido.mp3");
+
   navigator.geolocation.watchPosition((pos) => {
     const { latitude, longitude } = pos.coords;
 
-    // Mostrar o mover el marcador del usuario
     if (!marcadorUsuario) {
       marcadorUsuario = L.marker([latitude, longitude], {
         icon: L.icon({
@@ -55,31 +57,32 @@ document.getElementById("iniciar-gps").onclick = () => {
 
     direcciones.forEach((d, i) => {
       const dist = calcularDistancia(latitude, longitude, d.lat, d.lng);
-      if (dist < 100 && !d.entregado) {
-        alert(`Entregando automáticamente: ${d.direccion}`);
-        mapa.removeLayer(marcadores[i]);
-        d.entregado = true;
+      if (dist < 100 && !d.alertado) {
+        audio.play().catch(() => {});
+        const confirmar = confirm(`Estás cerca de: ${d.direccion}.\n¿Se entregó el paquete?`);
+        d.alertado = true;
+        if (confirmar) {
+          alert(`Marca "${d.direccion}" como entregada usando el botón.`);
+        }
       }
     });
 
-    // Limpiar entregas
-    direcciones = direcciones.filter(d => !d.entregado);
-    marcadores = marcadores.filter((m, i) => !direcciones[i]?.entregado);
     guardarLocal();
     mostrarDirecciones();
   }, console.error, { enableHighAccuracy: true });
 };
 
 function mostrarDirecciones() {
-  const lista = document.getElementById("lista-direcciones");
-  lista.innerHTML = "";
+  const contenedor = document.getElementById("lista-direcciones");
+  contenedor.innerHTML = "";
   direcciones.forEach((d, i) => {
-    const li = document.createElement("li");
-    li.innerHTML = `
+    const card = document.createElement("div");
+    card.className = "entrega-card";
+    card.innerHTML = `
       <strong>${d.direccion}</strong><br>
-      <button onclick="marcarEntregada(${i})">Entregada</button>
+      <button class="btn btn-danger btn-sm mt-2" onclick="marcarEntregada(${i})">Marcar como Entregada</button>
     `;
-    lista.appendChild(li);
+    contenedor.appendChild(card);
   });
 }
 
