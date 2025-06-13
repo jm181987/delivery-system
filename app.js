@@ -7,6 +7,8 @@ let rutaOptimizada = [];
 let polyline = null;
 let watchId = null;
 let posicionActual = null;
+let intervaloActualizacion = null;
+let entregaActivaIndex = null;
 
 // Inicialización del mapa
 window.onload = () => {
@@ -32,25 +34,42 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Algoritmo de optimización de ruta
-function optimizarRuta(posicionInicial) {
+// Algoritmo de optimización de ruta dinámica
+function optimizarRutaDinamica(posicionInicial) {
   if (direcciones.length === 0) return [];
 
-  const pedidosRestantes = [...direcciones];
+  // Si hay una entrega activa, la mantenemos como primera
+  if (entregaActivaIndex !== null && entregaActivaIndex < direcciones.length) {
+    const entregaActiva = direcciones[entregaActivaIndex];
+    const pedidosRestantes = direcciones.filter((_, i) => i !== entregaActivaIndex);
+    
+    // Optimizar solo las entregas restantes
+    const rutaRestante = optimizarRutaBasica(posicionInicial, pedidosRestantes);
+    return [entregaActiva, ...rutaRestante];
+  }
+  
+  return optimizarRutaBasica(posicionInicial, direcciones);
+}
+
+// Algoritmo básico del vecino más cercano
+function optimizarRutaBasica(posicionInicial, puntos) {
+  if (puntos.length === 0) return [];
+
+  const puntosRestantes = [...puntos];
   const ruta = [];
   let puntoActual = posicionInicial;
 
-  while (pedidosRestantes.length > 0) {
+  while (puntosRestantes.length > 0) {
     let indiceMasCercano = 0;
     let distanciaMasCorta = calcularDistancia(
       puntoActual.lat, puntoActual.lng,
-      pedidosRestantes[0].lat, pedidosRestantes[0].lng
+      puntosRestantes[0].lat, puntosRestantes[0].lng
     );
 
-    for (let i = 1; i < pedidosRestantes.length; i++) {
+    for (let i = 1; i < puntosRestantes.length; i++) {
       const distancia = calcularDistancia(
         puntoActual.lat, puntoActual.lng,
-        pedidosRestantes[i].lat, pedidosRestantes[i].lng
+        puntosRestantes[i].lat, puntosRestantes[i].lng
       );
       if (distancia < distanciaMasCorta) {
         distanciaMasCorta = distancia;
@@ -58,9 +77,9 @@ function optimizarRuta(posicionInicial) {
       }
     }
 
-    ruta.push(pedidosRestantes[indiceMasCercano]);
-    puntoActual = pedidosRestantes[indiceMasCercano];
-    pedidosRestantes.splice(indiceMasCercano, 1);
+    ruta.push(puntosRestantes[indiceMasCercano]);
+    puntoActual = puntosRestantes[indiceMasCercano];
+    puntosRestantes.splice(indiceMasCercano, 1);
   }
 
   return ruta;
@@ -120,6 +139,13 @@ async function mostrarRutaRealOptimizada(ruta) {
 
       // Ajustar vista del mapa para mostrar toda la ruta
       mapa.fitBounds(polyline.getBounds());
+      
+      // Mostrar próxima entrega
+      if (ruta.length > 0) {
+        document.getElementById('proxima-entrega').innerHTML = `
+          <strong>Próxima entrega:</strong> ${ruta[0].direccion}
+        `;
+      }
     }
   } catch (error) {
     console.error("Error al obtener ruta:", error);
@@ -136,6 +162,12 @@ async function mostrarRutaRealOptimizada(ruta) {
       <div>Modo simplificado (sin direcciones de calles)</div>
       <div>Paradas: ${ruta.length}</div>
     `;
+    
+    if (ruta.length > 0) {
+      document.getElementById('proxima-entrega').innerHTML = `
+        <strong>Próxima entrega:</strong> ${ruta[0].direccion}
+      `;
+    }
   }
 }
 
@@ -156,7 +188,7 @@ async function actualizarRutaEnTiempoReal() {
   if (!posicionActual || direcciones.length === 0) return;
   
   // 1. Optimizar el orden de las entregas
-  rutaOptimizada = optimizarRuta(posicionActual);
+  rutaOptimizada = optimizarRutaDinamica(posicionActual);
   direcciones = [...rutaOptimizada];
   guardarLocal();
   mostrarDirecciones();
@@ -169,90 +201,123 @@ async function actualizarRutaEnTiempoReal() {
 document.getElementById("iniciar-gps").onclick = function() {
   if (watchId) {
     // Detener seguimiento
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-    posicionActual = null;
-    actualizarEstadoGPS(false);
+    detenerSeguimientoGPS();
     this.textContent = "Activar GPS en Vivo";
     this.classList.remove("btn-danger");
     this.classList.add("btn-success");
-    document.getElementById('optimizar-ruta').disabled = true;
   } else {
     // Iniciar seguimiento
-    if (!navigator.geolocation) {
-      alert("Geolocalización no disponible");
-      return;
-    }
-
-    actualizarEstadoGPS(true);
+    iniciarSeguimientoGPS();
     this.textContent = "Detener GPS";
     this.classList.remove("btn-success");
     this.classList.add("btn-danger");
-    document.getElementById('optimizar-ruta').disabled = false;
-
-    watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        posicionActual = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude
-        };
-
-        // Actualizar marcador de usuario
-        if (!marcadorUsuario) {
-          marcadorUsuario = L.marker([posicionActual.lat, posicionActual.lng], {
-            icon: L.icon({
-              iconUrl: "https://cdn-icons-png.flaticon.com/512/61/61168.png",
-              iconSize: [32, 32],
-              iconAnchor: [16, 32]
-            })
-          }).addTo(mapa).bindPopup("Tú estás aquí").openPopup();
-        } else {
-          marcadorUsuario.setLatLng([posicionActual.lat, posicionActual.lng]);
-        }
-
-        // Centrar mapa en la posición actual
-        mapa.setView([posicionActual.lat, posicionActual.lng], 15);
-
-        // Actualizar ruta si hay direcciones
-        if (direcciones.length > 0) {
-          actualizarRutaEnTiempoReal();
-        }
-
-        // Verificar proximidad a puntos de entrega
-        verificarProximidadEntregas(posicionActual);
-      },
-      (err) => {
-        console.error("Error en GPS:", err);
-        alert("Error al obtener ubicación GPS");
-      },
-      { 
-        enableHighAccuracy: true,
-        maximumAge: 5000,
-        timeout: 10000
-      }
-    );
   }
 };
+
+function detenerSeguimientoGPS() {
+  navigator.geolocation.clearWatch(watchId);
+  clearInterval(intervaloActualizacion);
+  watchId = null;
+  intervaloActualizacion = null;
+  posicionActual = null;
+  actualizarEstadoGPS(false);
+  document.getElementById('optimizar-ruta').disabled = true;
+  document.getElementById('proxima-entrega').innerHTML = '';
+}
+
+function iniciarSeguimientoGPS() {
+  if (!navigator.geolocation) {
+    alert("Geolocalización no disponible");
+    return;
+  }
+
+  actualizarEstadoGPS(true);
+  document.getElementById('optimizar-ruta').disabled = false;
+
+  // Actualización más frecuente para mejor precisión
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      posicionActual = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      };
+
+      // Actualizar marcador de usuario
+      if (!marcadorUsuario) {
+        marcadorUsuario = L.marker([posicionActual.lat, posicionActual.lng], {
+          icon: L.icon({
+            iconUrl: "https://cdn-icons-png.flaticon.com/512/61/61168.png",
+            iconSize: [32, 32],
+            iconAnchor: [16, 32]
+          })
+        }).addTo(mapa).bindPopup("Tú estás aquí").openPopup();
+      } else {
+        marcadorUsuario.setLatLng([posicionActual.lat, posicionActual.lng]);
+      }
+
+      // Centrar mapa en la posición actual
+      mapa.setView([posicionActual.lat, posicionActual.lng], 15);
+    },
+    (err) => {
+      console.error("Error en GPS:", err);
+      alert("Error al obtener ubicación GPS");
+    },
+    { 
+      enableHighAccuracy: true,
+      maximumAge: 1000,
+      timeout: 5000
+    }
+  );
+
+  // Iniciar intervalo para actualización dinámica de ruta
+  intervaloActualizacion = setInterval(() => {
+    if (posicionActual && direcciones.length > 0) {
+      actualizarRutaEnTiempoReal();
+      verificarProximidadEntregas(posicionActual);
+    }
+  }, 10000); // Actualizar cada 10 segundos
+
+  // Primera actualización inmediata
+  if (posicionActual && direcciones.length > 0) {
+    actualizarRutaEnTiempoReal();
+  }
+}
 
 // Verificar proximidad a puntos de entrega
 function verificarProximidadEntregas(posicion) {
   const audio = new Audio("sonido.mp3");
   
-  direcciones.forEach((d, i) => {
-    if (d.entregado) return;
+  // Solo verificar si hay una ruta optimizada
+  if (rutaOptimizada.length === 0) return;
+  
+  // Comprobar la entrega más cercana (primera en la ruta optimizada)
+  const entrega = rutaOptimizada[0];
+  const dist = calcularDistancia(posicion.lat, posicion.lng, entrega.lat, entrega.lng);
+  
+  if (dist < 150 && !entrega.alertado) { // Radio de 150 metros
+    // Marcar como entrega activa
+    entregaActivaIndex = direcciones.findIndex(d => 
+      d.lat === entrega.lat && d.lng === entrega.lng
+    );
     
-    const dist = calcularDistancia(posicion.lat, posicion.lng, d.lat, d.lng);
-    if (dist < 100 && !d.alertado) {
-      audio.play().catch(() => {});
-      d.alertado = true;
-      guardarLocal();
-      
-      const confirmar = confirm(`¡Llegaste a: ${d.direccion}!\n¿Marcar como entregada?`);
-      if (confirmar) {
-        marcarEntregada(i);
-      }
+    // Notificar al usuario
+    audio.play().catch(() => {});
+    entrega.alertado = true;
+    guardarLocal();
+    mostrarDirecciones();
+    
+    const confirmar = confirm(`¡Estás cerca de: ${entrega.direccion}!\n¿Quieres marcarla como entrega activa?`);
+    if (confirmar) {
+      // Recalcular ruta manteniendo esta entrega como prioritaria
+      actualizarRutaEnTiempoReal();
+    } else {
+      entregaActivaIndex = null;
     }
-  });
+  } else if (dist > 200 && entregaActivaIndex !== null) {
+    // Si nos alejamos lo suficiente, quitar prioridad
+    entregaActivaIndex = null;
+    actualizarRutaEnTiempoReal();
+  }
 }
 
 // Optimización manual de ruta
@@ -267,7 +332,10 @@ document.getElementById("optimizar-ruta").onclick = async () => {
     return;
   }
   
+  // Quitar cualquier prioridad de entrega activa
+  entregaActivaIndex = null;
   await actualizarRutaEnTiempoReal();
+  alert("Ruta reoptimizada desde tu posición actual");
 };
 
 // Agregar nueva dirección
@@ -298,6 +366,11 @@ document.getElementById("agregar").onclick = async () => {
 // Marcar entrega como completada
 function marcarEntregada(index) {
   if (confirm(`¿Marcar "${direcciones[index].direccion}" como entregada?`)) {
+    // Si era la entrega activa, limpiar el estado
+    if (entregaActivaIndex === index) {
+      entregaActivaIndex = null;
+    }
+    
     mapa.removeLayer(marcadores[index]);
     direcciones.splice(index, 1);
     marcadores.splice(index, 1);
@@ -311,8 +384,9 @@ function marcarEntregada(index) {
       polyline = null;
       document.getElementById('info-ruta').innerHTML = 
         direcciones.length === 0 ? 
-        'Todas las entregas completadas!' : 
+        '¡Todas las entregas completadas!' : 
         'Activa el GPS para calcular la ruta';
+      document.getElementById('proxima-entrega').innerHTML = '';
     }
   }
 }
@@ -324,9 +398,15 @@ function mostrarDirecciones() {
   direcciones.forEach((d, i) => {
     const card = document.createElement("div");
     card.className = "entrega-card";
+    if (i === 0 && rutaOptimizada.length > 0 && d.lat === rutaOptimizada[0].lat && d.lng === rutaOptimizada[0].lng) {
+      card.classList.add("proxima-entrega");
+    }
+    if (i === entregaActivaIndex) {
+      card.classList.add("activa");
+    }
     card.innerHTML = `
       <strong>${d.direccion}</strong><br>
-      <span class="text-muted">Orden: ${i+1}</span><br>
+      <span class="text-muted">Orden actual: ${i+1}</span><br>
       <button class="btn btn-danger btn-sm mt-2" onclick="marcarEntregada(${i})">Marcar como Entregada</button>
     `;
     contenedor.appendChild(card);
@@ -374,5 +454,6 @@ function actualizarEstadoGPS(activo) {
   
   if (!activo) {
     document.getElementById('info-ruta').innerHTML = 'Activa el GPS para comenzar';
+    document.getElementById('proxima-entrega').innerHTML = '';
   }
 }
