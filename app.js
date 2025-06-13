@@ -456,4 +456,152 @@ function actualizarEstadoGPS(activo) {
     document.getElementById('info-ruta').innerHTML = 'Activa el GPS para comenzar';
     document.getElementById('proxima-entrega').innerHTML = '';
   }
+}// [Mantén todas las variables globales anteriores]
+
+// Añade estas nuevas variables
+let clickTimer = null;
+let tooltip = null;
+let previewMarker = null;
+const LONG_CLICK_DURATION = 800; // 0.8 segundos
+
+window.onload = () => {
+  mapa = L.map('mapa').setView([0, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(mapa);
+
+  // Crear tooltip para instrucciones
+  tooltip = document.createElement('div');
+  tooltip.className = 'map-tooltip';
+  document.body.appendChild(tooltip);
+  tooltip.style.display = 'none';
+
+  // Configurar eventos del mapa para clic prolongado
+  mapa.on('mousedown', iniciarClickLargo);
+  mapa.on('mouseup', cancelarClickLargo);
+  mapa.on('mouseout', cancelarClickLargo);
+  mapa.on('mousemove', moverMouseEnMapa);
+
+  direcciones.forEach(d => agregarMarcador(d));
+  mostrarDirecciones();
+  actualizarEstadoGPS(false);
+};
+
+// Nuevas funciones para manejar clic prolongado
+function iniciarClickLargo(e) {
+  if (clickTimer !== null) return;
+  
+  clickTimer = setTimeout(() => {
+    clickTimer = null;
+    confirmarAgregarPunto(e.latlng);
+  }, LONG_CLICK_DURATION);
+  
+  // Mostrar marcador de vista previa
+  if (previewMarker) {
+    mapa.removeLayer(previewMarker);
+  }
+  previewMarker = L.circleMarker(e.latlng, {
+    radius: 8,
+    className: 'map-marker-preview'
+  }).addTo(mapa);
+  
+  // Mostrar tooltip
+  tooltip.style.display = 'block';
+  tooltip.textContent = 'Suelta para agregar esta ubicación';
+  actualizarPosicionTooltip(e.originalEvent);
 }
+
+function cancelarClickLargo() {
+  if (clickTimer) {
+    clearTimeout(clickTimer);
+    clickTimer = null;
+  }
+  tooltip.style.display = 'none';
+  if (previewMarker) {
+    mapa.removeLayer(previewMarker);
+    previewMarker = null;
+  }
+}
+
+function moverMouseEnMapa(e) {
+  if (clickTimer !== null) {
+    actualizarPosicionTooltip(e.originalEvent);
+    if (previewMarker) {
+      previewMarker.setLatLng(e.latlng);
+    }
+  }
+}
+
+function actualizarPosicionTooltip(event) {
+  tooltip.style.left = (event.clientX + 15) + 'px';
+  tooltip.style.top = (event.clientY + 15) + 'px';
+}
+
+async function confirmarAgregarPunto(latlng) {
+  tooltip.style.display = 'none';
+  if (previewMarker) {
+    mapa.removeLayer(previewMarker);
+    previewMarker = null;
+  }
+
+  // Obtener la dirección usando geocodificación inversa
+  const direccion = await obtenerDireccionDesdeCoordenadas(latlng.lat, latlng.lng);
+  
+  if (direccion) {
+    const confirmar = confirm(`¿Agregar esta ubicación como entrega?\n\n${direccion}`);
+    if (confirmar) {
+      const nuevaEntrega = {
+        direccion: direccion,
+        lat: latlng.lat,
+        lng: latlng.lng,
+        entregado: false,
+        alertado: false
+      };
+      
+      direcciones.push(nuevaEntrega);
+      guardarLocal();
+      agregarMarcador(nuevaEntrega);
+      mostrarDirecciones();
+      
+      // Si el GPS está activo, recalcular ruta
+      if (posicionActual) {
+        await actualizarRutaEnTiempoReal();
+      }
+    }
+  }
+}
+
+// Función para geocodificación inversa (coordenadas -> dirección)
+async function obtenerDireccionDesdeCoordenadas(lat, lng) {
+  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    
+    if (data.address) {
+      // Construir una dirección legible
+      const address = data.address;
+      let direccion = '';
+      
+      if (address.road) direccion += address.road;
+      if (address.house_number) direccion += ` ${address.house_number}`;
+      if (direccion === '' && address.pedestrian) direccion += address.pedestrian;
+      if (direccion === '' && address.building) direccion += address.building;
+      
+      if (direccion === '') {
+        // Si no tenemos una dirección específica, usar el barrio o ciudad
+        if (address.neighbourhood) direccion = address.neighbourhood;
+        else if (address.city) direccion = address.city;
+        else if (address.town) direccion = address.town;
+        else if (address.village) direccion = address.village;
+      }
+      
+      return direccion || "Ubicación en el mapa";
+    }
+  } catch (error) {
+    console.error("Error en geocodificación inversa:", error);
+  }
+  return "Ubicación en el mapa";
+}
+
+// [Mantén todas las demás funciones anteriores]

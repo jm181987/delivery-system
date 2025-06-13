@@ -2,112 +2,49 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Entregas Inteligentes con Ruta Dinámica</title>
+  <title>Entregas Inteligentes con Selección en Mapa</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      background-color: #f8f9fa;
+    /* [Mantén todos los estilos anteriores] */
+    
+    /* Nuevos estilos para la selección en mapa */
+    .map-tooltip {
+      position: absolute;
+      background: white;
+      padding: 5px 10px;
+      border-radius: 3px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.2);
+      pointer-events: none;
+      z-index: 1000;
+      font-size: 14px;
     }
-    #mapa {
-      height: 500px;
-      border-radius: 12px;
-      box-shadow: 0 0 12px rgba(0,0,0,0.1);
-      margin-bottom: 1rem;
-    }
-    .entrega-card {
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 1rem;
-      margin-bottom: 0.5rem;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-      transition: all 0.3s ease;
-    }
-    .entrega-card.activa {
-      background-color: #e3f2fd;
-      border-left: 4px solid #2196f3;
-    }
-    .btn-sm {
-      font-size: 0.8rem;
-    }
-    .ruta-real {
-      stroke: #3498db;
-      stroke-width: 5;
-      stroke-opacity: 0.7;
-      stroke-linejoin: round;
-      fill: none;
-    }
-    .punto-inicio {
-      background-color: #2ecc71;
+    .map-marker-preview {
+      background-color: #ff5722;
       width: 12px;
       height: 12px;
       border-radius: 50%;
       border: 2px solid white;
+      pointer-events: none;
     }
-    .punto-entrega {
-      background-color: #e74c3c;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      border: 2px solid white;
-    }
-    .info-ruta {
-      background: white;
-      padding: 10px;
-      border-radius: 5px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.2);
-      margin-bottom: 1rem;
-    }
-    .estado-gps {
-      font-weight: bold;
-    }
-    .gps-activo {
-      color: #2ecc71;
-    }
-    .gps-inactivo {
-      color: #e74c3c;
-    }
-    .proxima-entrega {
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0% { background-color: #e3f2fd; }
-      50% { background-color: #bbdefb; }
-      100% { background-color: #e3f2fd; }
+    .long-click-instruction {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      background: rgba(255,255,255,0.8);
+      padding: 5px 10px;
+      border-radius: 3px;
+      z-index: 1000;
+      font-size: 12px;
     }
   </style>
 </head>
 <body>
-  <div class="container py-4">
-    <h2 class="mb-3 text-center">Entregas Inteligentes con Ruta Dinámica</h2>
-    <div id="mapa"></div>
-    
-    <div class="info-ruta">
-      <div>
-        <strong>Estado GPS:</strong>
-        <span id="estado-gps" class="estado-gps gps-inactivo">Inactivo</span>
-      </div>
-      <div id="info-ruta">Activa el GPS para comenzar</div>
-      <div id="proxima-entrega"></div>
-    </div>
-
-    <div class="mb-3 row g-2">
-      <div class="col-md-5">
-        <input type="text" id="direccion" class="form-control" placeholder="Agregar dirección de entrega" />
-      </div>
-      <div class="col-md-2 d-grid">
-        <button id="agregar" class="btn btn-primary">Agregar</button>
-      </div>
-      <div class="col-md-2 d-grid">
-        <button id="optimizar-ruta" class="btn btn-warning" disabled>Reoptimizar</button>
-      </div>
-      <div class="col-md-3 d-grid">
-        <button id="iniciar-gps" class="btn btn-success">Activar GPS en Vivo</button>
-      </div>
-    </div>
-    <div id="lista-direcciones"></div>
+  <!-- [Mantén todo el HTML anterior] -->
+  
+  <!-- Añade este div para las instrucciones -->
+  <div class="long-click-instruction d-none d-md-block">
+    Mantén presionado en el mapa para agregar una entrega
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
