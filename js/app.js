@@ -19,6 +19,7 @@ document.getElementById("agregar").onclick = async () => {
 
   const datos = await geocodificar(direccion);
   if (datos) {
+    datos.entregado = false;
     direcciones.push(datos);
     guardarLocal();
     agregarMarcador(datos);
@@ -39,11 +40,16 @@ document.getElementById("iniciar-gps").onclick = () => {
     const { latitude, longitude } = pos.coords;
     direcciones.forEach((d, i) => {
       const dist = calcularDistancia(latitude, longitude, d.lat, d.lng);
-      if (dist < 100) {
-        alert(`Estás cerca de la entrega: ${d.direccion}`);
-        marcarEntregada(i);
+      if (dist < 100 && !d.entregado) {
+        alert(`Entregando automáticamente: ${d.direccion}`);
+        mapa.removeLayer(marcadores[i]);
+        d.entregado = true;
       }
     });
+    direcciones = direcciones.filter(d => !d.entregado);
+    marcadores = marcadores.filter((m, i) => !direcciones[i]?.entregado);
+    guardarLocal();
+    mostrarDirecciones();
   }, console.error, { enableHighAccuracy: true });
 };
 
@@ -62,8 +68,7 @@ function mostrarDirecciones() {
 
 function marcarEntregada(index) {
   if (confirm(`¿Marcar "${direcciones[index].direccion}" como entregada?`)) {
-    let marcador = marcadores[index];
-    if (marcador) mapa.removeLayer(marcador);
+    mapa.removeLayer(marcadores[index]);
     direcciones.splice(index, 1);
     marcadores.splice(index, 1);
     guardarLocal();
