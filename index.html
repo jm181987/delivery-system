@@ -3,182 +3,94 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Gestor de Entregas Táctil</title>
+  <title>Gestor de Entregas Universal</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+    }
     body {
       font-family: 'Segoe UI', sans-serif;
       background-color: #f8f9fa;
       touch-action: manipulation;
+      overscroll-behavior-y: none;
+      padding-bottom: 20px;
     }
     #mapa {
       height: 60vh;
-      min-height: 400px;
-      border-radius: 12px;
-      box-shadow: 0 0 12px rgba(0,0,0,0.1);
-      margin-bottom: 1rem;
+      min-height: 300px;
+      width: 100%;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+    .btn-touch {
+      padding: 12px 8px;
+      font-size: 1rem;
+      touch-action: manipulation;
     }
     .entrega-card {
       background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 1rem;
-      margin-bottom: 0.5rem;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-      transition: all 0.3s ease;
+      margin-bottom: 8px;
+      padding: 12px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    .entrega-card.activa {
-      background-color: #e3f2fd;
-      border-left: 4px solid #2196f3;
-    }
-    .btn-sm {
-      font-size: 0.8rem;
-      padding: 0.25rem 0.5rem;
-    }
-    .ruta-real {
-      stroke: #3498db;
-      stroke-width: 5;
-      stroke-opacity: 0.7;
-      stroke-linejoin: round;
-      fill: none;
-    }
-    .punto-inicio {
-      background-color: #2ecc71;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      border: 2px solid white;
-    }
-    .punto-entrega {
-      background-color: #e74c3c;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      border: 2px solid white;
-    }
-    .info-ruta {
+    .map-tooltip {
+      position: fixed;
       background: white;
-      padding: 10px;
-      border-radius: 5px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.2);
-      margin-bottom: 1rem;
+      padding: 8px 12px;
+      border-radius: 16px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 1000;
+      font-size: 14px;
+      max-width: 80%;
+      pointer-events: none;
+      display: none;
     }
-    .estado-gps {
-      font-weight: bold;
+    .preview-marker {
+      width: 24px;
+      height: 24px;
+      background: #FF5722;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
     }
-    .gps-activo {
-      color: #2ecc71;
-    }
-    .gps-inactivo {
-      color: #e74c3c;
-    }
-    .proxima-entrega {
+    .gps-active {
       animation: pulse 2s infinite;
     }
     @keyframes pulse {
-      0% { background-color: #e3f2fd; }
-      50% { background-color: #bbdefb; }
-      100% { background-color: #e3f2fd; }
-    }
-    .map-tooltip {
-      position: absolute;
-      background: white;
-      padding: 5px 10px;
-      border-radius: 3px;
-      box-shadow: 0 0 5px rgba(0,0,0,0.2);
-      pointer-events: none;
-      z-index: 1000;
-      font-size: 14px;
-      display: none;
-    }
-    .map-marker-preview {
-      background-color: #ff5722;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      border: 2px solid white;
-      pointer-events: none;
-    }
-    .long-click-instruction {
-      position: absolute;
-      bottom: 10px;
-      left: 10px;
-      background: rgba(255,255,255,0.9);
-      padding: 5px 10px;
-      border-radius: 3px;
-      z-index: 1000;
-      font-size: 12px;
-    }
-    #loading-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.5);
-      z-index: 2000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      color: white;
-      font-size: 1.5rem;
-      display: none;
-    }
-    .btn-mobile {
-      padding: 0.5rem;
-      font-size: 0.9rem;
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
     }
     @media (max-width: 768px) {
       #mapa {
         height: 50vh;
       }
-      .btn-mobile {
-        padding: 0.75rem;
-        font-size: 1rem;
-      }
-      .long-click-instruction {
-        font-size: 11px;
-        padding: 3px 6px;
+      .btn-touch {
+        padding: 14px 8px;
       }
     }
   </style>
 </head>
 <body>
-  <div id="loading-overlay">Cargando mapa...</div>
-  
-  <div class="container py-2 py-md-4">
-    <h2 class="mb-3 text-center">Gestor de Entregas</h2>
+  <div class="container py-2">
+    <h4 class="text-center mb-3">Gestor de Entregas</h4>
     <div id="mapa"></div>
     
-    <div class="info-ruta">
-      <div>
-        <strong>Estado GPS:</strong>
-        <span id="estado-gps" class="estado-gps gps-inactivo">Inactivo</span>
-      </div>
-      <div id="info-ruta">Activa el GPS para comenzar</div>
-      <div id="proxima-entrega"></div>
+    <div class="d-flex mb-3 gap-2">
+      <input type="text" id="direccion" class="form-control flex-grow-1" placeholder="Dirección o toque en el mapa">
+      <button id="agregar" class="btn btn-primary btn-touch">+</button>
     </div>
-
-    <div class="mb-3 row g-2">
-      <div class="col-md-5">
-        <input type="text" id="direccion" class="form-control" placeholder="Agregar dirección" />
-      </div>
-      <div class="col-md-2 d-grid">
-        <button id="agregar" class="btn btn-primary btn-mobile">Agregar</button>
-      </div>
-      <div class="col-md-2 d-grid">
-        <button id="optimizar-ruta" class="btn btn-warning btn-mobile" disabled>Optimizar</button>
-      </div>
-      <div class="col-md-3 d-grid">
-        <button id="iniciar-gps" class="btn btn-success btn-mobile">Activar GPS</button>
-      </div>
+    
+    <div class="d-grid gap-2 mb-3">
+      <button id="iniciar-gps" class="btn btn-success btn-touch gps-active">Activar GPS</button>
+      <button id="optimizar-ruta" class="btn btn-warning btn-touch" disabled>Optimizar Ruta</button>
     </div>
-    <div id="lista-direcciones"></div>
-  </div>
-
-  <div class="long-click-instruction">
-    Mantén presionado en el mapa para agregar
+    
+    <div id="lista-direcciones" class="mb-3"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
