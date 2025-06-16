@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>Gestor de Entregas con Rutas Reales</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -83,7 +85,7 @@
     let polyline = null, watchId = null, posicionActual = null;
     let previewMarker = null, tooltip = null;
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    let clickTimer = null;
+    let touchMoved = false;
 
     // Inicialización
     document.addEventListener('DOMContentLoaded', () => {
@@ -94,7 +96,7 @@
 
     function initMapa() {
       mapa = L.map('mapa', {
-        tap: false, // Importante para Android
+        tap: !isMobile, // Solo desactivar tap en móviles si es necesario
         touchZoom: true,
         dragging: true,
         attributionControl: false
@@ -104,11 +106,50 @@
         maxZoom: 19
       }).addTo(mapa);
 
-      // Eventos táctiles mejorados
-      mapa.on('touchstart', handleTouchStart);
-      mapa.on('touchend', handleTouchEnd);
-      mapa.on('touchmove', handleTouchMove);
-      mapa.on('click', handleClick);
+      // Evento unificado para clicks/touches
+      mapa.on(isMobile ? 'touchend' : 'click', function(e) {
+        // En móviles, verificar que no sea un desplazamiento
+        if (isMobile && (touchMoved || (e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length > 1))) {
+          touchMoved = false;
+          return;
+        }
+        
+        if (isMobile) {
+          // Prevenir el comportamiento por defecto del navegador
+          e.originalEvent.preventDefault();
+          
+          // Mostrar previsualización solo si no es un desplazamiento
+          const latlng = e.latlng;
+          mostrarPrevisualizacion(latlng, e.originalEvent.changedTouches[0]);
+          
+          // Confirmar después de un breve retraso para dar feedback visual
+          setTimeout(() => {
+            if (!touchMoved) {
+              limpiarSeleccion();
+              confirmarAgregarPunto(latlng);
+            }
+          }, 300);
+        } else {
+          // En desktop mantener la lógica de previsualización
+          const latlng = e.latlng;
+          mostrarPrevisualizacion(latlng, {clientX: e.originalEvent.clientX, clientY: e.originalEvent.clientY});
+        }
+      });
+
+      // Manejar el desplazamiento en móviles
+      if (isMobile) {
+        mapa.on('touchmove', function(e) {
+          touchMoved = true;
+          if (previewMarker && e.originalEvent.touches.length === 1) {
+            const touch = e.originalEvent.touches[0];
+            const point = new L.Point(touch.clientX, touch.clientY);
+            const latlng = mapa.containerPointToLatLng(point);
+            
+            previewMarker.setLatLng(latlng);
+            actualizarTooltip(touch);
+          }
+        });
+      }
     }
 
     function initUI() {
@@ -119,45 +160,6 @@
       document.getElementById('btn-agregar').addEventListener('click', agregarDesdeInput);
       document.getElementById('btn-gps').addEventListener('click', toggleGPS);
       document.getElementById('btn-optimizar').addEventListener('click', optimizarRuta);
-    }
-
-    // Manejo de eventos táctiles mejorado
-    function handleTouchStart(e) {
-      if (e.originalEvent.touches.length > 1) return;
-      
-      clickTimer = setTimeout(() => {
-        const touch = e.originalEvent.touches[0];
-        const point = new L.Point(touch.clientX, touch.clientY);
-        const latlng = mapa.containerPointToLatLng(point);
-        
-        mostrarPrevisualizacion(latlng, touch);
-      }, 500); // 500ms para long press
-    }
-
-    function handleTouchMove(e) {
-      clearTimeout(clickTimer);
-      if (previewMarker && e.originalEvent.touches.length === 1) {
-        const touch = e.originalEvent.touches[0];
-        const point = new L.Point(touch.clientX, touch.clientY);
-        const latlng = mapa.containerPointToLatLng(point);
-        
-        previewMarker.setLatLng(latlng);
-        actualizarTooltip(touch);
-      }
-    }
-
-    function handleTouchEnd(e) {
-      clearTimeout(clickTimer);
-      if (previewMarker) {
-        const latlng = previewMarker.getLatLng();
-        limpiarSeleccion();
-        confirmarAgregarPunto(latlng);
-      }
-    }
-
-    function handleClick(e) {
-      if (isMobile) return; // En móviles solo usamos eventos táctiles
-      confirmarAgregarPunto(e.latlng);
     }
 
     // Funciones de selección en mapa
@@ -172,7 +174,7 @@
         interactive: false
       }).addTo(mapa);
 
-      tooltip.textContent = 'Suelta para agregar';
+      tooltip.textContent = isMobile ? 'Suelta para agregar' : 'Click para agregar';
       tooltip.style.display = 'block';
       actualizarTooltip(touch);
     }
@@ -183,6 +185,7 @@
         previewMarker = null;
       }
       tooltip.style.display = 'none';
+      touchMoved = false;
     }
 
     function actualizarTooltip(touch) {
