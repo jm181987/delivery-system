@@ -86,6 +86,7 @@
     let previewMarker = null, tooltip = null;
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     let touchMoved = false;
+    let ultimaDireccionSeleccionada = '';
 
     // Inicialización
     document.addEventListener('DOMContentLoaded', () => {
@@ -122,6 +123,12 @@
           const latlng = e.latlng;
           mostrarPrevisualizacion(latlng, e.originalEvent.changedTouches[0]);
           
+          // Obtener y mostrar la dirección en el input
+          obtenerDireccion(latlng.lat, latlng.lng).then(direccion => {
+            document.getElementById('input-direccion').value = direccion;
+            ultimaDireccionSeleccionada = direccion;
+          });
+          
           // Confirmar después de un breve retraso para dar feedback visual
           setTimeout(() => {
             if (!touchMoved) {
@@ -133,6 +140,12 @@
           // En desktop mantener la lógica de previsualización
           const latlng = e.latlng;
           mostrarPrevisualizacion(latlng, {clientX: e.originalEvent.clientX, clientY: e.originalEvent.clientY});
+          
+          // Obtener y mostrar la dirección en el input
+          obtenerDireccion(latlng.lat, latlng.lng).then(direccion => {
+            document.getElementById('input-direccion').value = direccion;
+            ultimaDireccionSeleccionada = direccion;
+          });
         }
       });
 
@@ -147,6 +160,12 @@
             
             previewMarker.setLatLng(latlng);
             actualizarTooltip(touch);
+            
+            // Actualizar la dirección en tiempo real mientras se mueve el dedo
+            obtenerDireccion(latlng.lat, latlng.lng).then(direccion => {
+              document.getElementById('input-direccion').value = direccion;
+              ultimaDireccionSeleccionada = direccion;
+            });
           }
         });
       }
@@ -160,6 +179,13 @@
       document.getElementById('btn-agregar').addEventListener('click', agregarDesdeInput);
       document.getElementById('btn-gps').addEventListener('click', toggleGPS);
       document.getElementById('btn-optimizar').addEventListener('click', optimizarRuta);
+      
+      // Agregar evento para permitir editar la dirección manualmente
+      document.getElementById('input-direccion').addEventListener('focus', function() {
+        if (this.value === ultimaDireccionSeleccionada) {
+          this.select();
+        }
+      });
     }
 
     // Funciones de selección en mapa
@@ -211,10 +237,26 @@
       const direccion = input.value.trim();
       if (!direccion) return;
 
+      // Si la dirección es la misma que la última seleccionada en el mapa, usar esas coordenadas
+      if (direccion === ultimaDireccionSeleccionada && previewMarker) {
+        const latlng = previewMarker.getLatLng();
+        agregarEntrega({
+          direccion,
+          lat: latlng.lat,
+          lng: latlng.lng,
+          entregado: false
+        });
+        input.value = '';
+        limpiarSeleccion();
+        return;
+      }
+
+      // Si no, geocodificar la dirección
       const datos = await geocodificarDireccion(direccion);
       if (datos) {
         agregarEntrega({...datos, entregado: false});
         input.value = '';
+        limpiarSeleccion();
       } else {
         alert('No se encontró la dirección');
       }
@@ -238,6 +280,9 @@
       marcadores.push(marker);
     }
 
+    // Resto del código (GPS, optimización, etc.) permanece igual...
+    // [El resto de las funciones (toggleGPS, iniciarGPS, detenerGPS, etc.) se mantienen igual que en el código anterior]
+    
     // GPS y optimización con OSRM
     function toggleGPS() {
       if (watchId) {
