@@ -57,6 +57,40 @@
       stroke-opacity: 0.7;
       stroke-linejoin: round;
     }
+    /* Estilos para el panel de navegación GPS */
+    #gpsPanel {
+      position: fixed;
+      bottom: 10px;
+      left: 10px;
+      right: 10px;
+      background: white;
+      border-radius: 10px;
+      padding: 15px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 1000;
+      display: none;
+    }
+    #gpsInstruction {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+    #gpsImage {
+      display: block;
+      margin: 0 auto;
+      width: 80px;
+      height: 80px;
+    }
+    #gpsDistance {
+      text-align: center;
+      font-size: 1rem;
+      color: #555;
+    }
+    .gps-btn {
+      width: 100%;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -72,9 +106,18 @@
     <div class="d-grid gap-2 mb-3">
       <button id="btn-gps" class="btn btn-success btn-mobile">Activar GPS</button>
       <button id="btn-optimizar" class="btn btn-warning btn-mobile" disabled>Optimizar Ruta</button>
+      <button id="btn-iniciar-entregas" class="btn btn-info btn-mobile">Iniciar Entregas</button>
     </div>
     
     <div id="lista-entregas"></div>
+  </div>
+
+  <!-- Panel de navegación GPS -->
+  <div id="gpsPanel">
+    <div id="gpsInstruction">Preparando indicaciones...</div>
+    <img id="gpsImage" src="" alt="Indicación GPS">
+    <div id="gpsDistance"></div>
+    <button id="btn-detener-gps" class="btn btn-danger gps-btn">Detener Navegación</button>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -87,6 +130,17 @@
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     let touchMoved = false;
     let ultimaDireccionSeleccionada = '';
+    let gpsInterval = null;
+    let currentRouteIndex = 0;
+    let rutaOptimizada = [];
+
+    // Imágenes base64 para las flechas de navegación
+    const gpsImages = {
+      straight: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzQyODVGNCIgZD0iTTEyLDRMMTIsMjBMMTUsMTdMMTgsMjBMMTIsMjBMMTIsMjNMMjAsMTVMMTIsN1YxMUw5LDhMMTIsMTFWNFoiIC8+PC9zdmc+',
+      right: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzRDMEE1MCIgZD0iTTgsNUwxNiwxMkw4LDE5VjVaIiAvPjwvc3ZnPg==',
+      left: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI0ZGNTcyMiIgZD0iTTE2LDVWMTlMOCwxMkwxNiw1WiIgLz48L3N2Zz4=',
+      arrive: 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzRDMEE1MCIgZD0iTTEyLDJBNyw3IDAgMCwxIDE5LDlBNyw3IDAgMCwxIDEyLDE2QTcsNyAwIDAsMSA1LDlBNyw3IDAgMCwxIDEyLDJNMTIsNkE1LDUgMCAwLDAgNywxMUE1LDUgMCAwLDAgMTIsMTZBNSw1IDAgMCwwIDE3LDExQTUsNSAwIDAsMCAxMiw2WiIgLz48L3N2Zz4='
+    };
 
     // Inicialización
     document.addEventListener('DOMContentLoaded', () => {
@@ -97,7 +151,7 @@
 
     function initMapa() {
       mapa = L.map('mapa', {
-        tap: !isMobile, // Solo desactivar tap en móviles si es necesario
+        tap: !isMobile,
         touchZoom: true,
         dragging: true,
         attributionControl: false
@@ -109,27 +163,21 @@
 
       // Evento unificado para clicks/touches
       mapa.on(isMobile ? 'touchend' : 'click', function(e) {
-        // En móviles, verificar que no sea un desplazamiento
         if (isMobile && (touchMoved || (e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length > 1))) {
           touchMoved = false;
           return;
         }
         
         if (isMobile) {
-          // Prevenir el comportamiento por defecto del navegador
           e.originalEvent.preventDefault();
-          
-          // Mostrar previsualización solo si no es un desplazamiento
           const latlng = e.latlng;
           mostrarPrevisualizacion(latlng, e.originalEvent.changedTouches[0]);
           
-          // Obtener y mostrar la dirección en el input
           obtenerDireccion(latlng.lat, latlng.lng).then(direccion => {
             document.getElementById('input-direccion').value = direccion;
             ultimaDireccionSeleccionada = direccion;
           });
           
-          // Confirmar después de un breve retraso para dar feedback visual
           setTimeout(() => {
             if (!touchMoved) {
               limpiarSeleccion();
@@ -137,11 +185,9 @@
             }
           }, 300);
         } else {
-          // En desktop mantener la lógica de previsualización
           const latlng = e.latlng;
           mostrarPrevisualizacion(latlng, {clientX: e.originalEvent.clientX, clientY: e.originalEvent.clientY});
           
-          // Obtener y mostrar la dirección en el input
           obtenerDireccion(latlng.lat, latlng.lng).then(direccion => {
             document.getElementById('input-direccion').value = direccion;
             ultimaDireccionSeleccionada = direccion;
@@ -149,7 +195,6 @@
         }
       });
 
-      // Manejar el desplazamiento en móviles
       if (isMobile) {
         mapa.on('touchmove', function(e) {
           touchMoved = true;
@@ -161,7 +206,6 @@
             previewMarker.setLatLng(latlng);
             actualizarTooltip(touch);
             
-            // Actualizar la dirección en tiempo real mientras se mueve el dedo
             obtenerDireccion(latlng.lat, latlng.lng).then(direccion => {
               document.getElementById('input-direccion').value = direccion;
               ultimaDireccionSeleccionada = direccion;
@@ -179,8 +223,9 @@
       document.getElementById('btn-agregar').addEventListener('click', agregarDesdeInput);
       document.getElementById('btn-gps').addEventListener('click', toggleGPS);
       document.getElementById('btn-optimizar').addEventListener('click', optimizarRuta);
+      document.getElementById('btn-iniciar-entregas').addEventListener('click', iniciarNavegacion);
+      document.getElementById('btn-detener-gps').addEventListener('click', detenerNavegacion);
       
-      // Agregar evento para permitir editar la dirección manualmente
       document.getElementById('input-direccion').addEventListener('focus', function() {
         if (this.value === ultimaDireccionSeleccionada) {
           this.select();
@@ -237,7 +282,6 @@
       const direccion = input.value.trim();
       if (!direccion) return;
 
-      // Si la dirección es la misma que la última seleccionada en el mapa, usar esas coordenadas
       if (direccion === ultimaDireccionSeleccionada && previewMarker) {
         const latlng = previewMarker.getLatLng();
         agregarEntrega({
@@ -251,7 +295,6 @@
         return;
       }
 
-      // Si no, geocodificar la dirección
       const datos = await geocodificarDireccion(direccion);
       if (datos) {
         agregarEntrega({...datos, entregado: false});
@@ -280,9 +323,6 @@
       marcadores.push(marker);
     }
 
-    // Resto del código (GPS, optimización, etc.) permanece igual...
-    // [El resto de las funciones (toggleGPS, iniciarGPS, detenerGPS, etc.) se mantienen igual que en el código anterior]
-    
     // GPS y optimización con OSRM
     function toggleGPS() {
       if (watchId) {
@@ -352,15 +392,14 @@
       if (!posicionActual || entregas.length < 1) return;
 
       try {
-        // Ordenar por distancia lineal primero (para el algoritmo)
         const entregasOrdenadas = [...entregas].sort((a, b) => {
           const distA = calcularDistancia(posicionActual.lat, posicionActual.lng, a.lat, a.lng);
           const distB = calcularDistancia(posicionActual.lat, posicionActual.lng, b.lat, b.lng);
           return distA - distB;
         });
 
-        // Obtener ruta real desde OSRM
         const ruta = await obtenerRutaOSRM(posicionActual, entregasOrdenadas);
+        rutaOptimizada = entregasOrdenadas;
         dibujarRuta(ruta);
         actualizarLista();
       } catch (error) {
@@ -371,7 +410,6 @@
     }
 
     async function obtenerRutaOSRM(inicio, puntos) {
-      // Construir URL para OSRM
       let url = `https://router.project-osrm.org/route/v1/driving/`;
       url += `${inicio.lng},${inicio.lat};`;
       url += puntos.map(p => `${p.lng},${p.lat}`).join(';');
@@ -398,7 +436,6 @@
         }
       }).addTo(mapa);
       
-      // Ajustar vista para mostrar toda la ruta
       const bounds = polyline.getBounds();
       if (bounds.isValid()) {
         mapa.fitBounds(bounds);
@@ -415,6 +452,93 @@
         opacity: 0.7,
         dashArray: '5,5'
       }).addTo(mapa);
+    }
+
+    // Navegación GPS
+    function iniciarNavegacion() {
+      if (!posicionActual || entregas.length === 0) {
+        alert("Primero activa el GPS y agrega entregas");
+        return;
+      }
+
+      if (rutaOptimizada.length === 0) {
+        alert("Optimiza la ruta primero");
+        return;
+      }
+
+      document.getElementById('gpsPanel').style.display = 'block';
+      currentRouteIndex = 0;
+      actualizarInstruccionesNavegacion();
+      
+      // Actualizar instrucciones cada 5 segundos
+      gpsInterval = setInterval(actualizarInstruccionesNavegacion, 5000);
+    }
+
+    function detenerNavegacion() {
+      document.getElementById('gpsPanel').style.display = 'none';
+      if (gpsInterval) clearInterval(gpsInterval);
+      gpsInterval = null;
+    }
+
+    function actualizarInstruccionesNavegacion() {
+      if (!posicionActual || currentRouteIndex >= rutaOptimizada.length) {
+        document.getElementById('gpsInstruction').textContent = "Ruta completada";
+        document.getElementById('gpsImage').src = gpsImages.arrive;
+        document.getElementById('gpsDistance').textContent = "Todas las entregas realizadas";
+        if (gpsInterval) clearInterval(gpsInterval);
+        return;
+      }
+
+      const destino = rutaOptimizada[currentRouteIndex];
+      const distancia = calcularDistancia(
+        posicionActual.lat, posicionActual.lng,
+        destino.lat, destino.lng
+      );
+
+      // Determinar dirección (simplificado)
+      const bearing = calcularRumbo(
+        posicionActual.lat, posicionActual.lng,
+        destino.lat, destino.lng
+      );
+
+      let instruccion = "";
+      let imagen = gpsImages.straight;
+
+      if (distancia < 50) {
+        // Llegamos al punto de entrega
+        instruccion = `Has llegado a: ${destino.direccion}`;
+        imagen = gpsImages.arrive;
+        currentRouteIndex++;
+      } else if (bearing >= -45 && bearing <= 45) {
+        instruccion = "Continúa recto";
+        imagen = gpsImages.straight;
+      } else if (bearing > 45 && bearing <= 135) {
+        instruccion = "Gira a la derecha";
+        imagen = gpsImages.right;
+      } else if (bearing < -45 && bearing >= -135) {
+        instruccion = "Gira a la izquierda";
+        imagen = gpsImages.left;
+      } else {
+        instruccion = "Vuelta en U";
+        imagen = gpsImages.left;
+      }
+
+      document.getElementById('gpsInstruction').textContent = instruccion;
+      document.getElementById('gpsImage').src = imagen;
+      document.getElementById('gpsDistance').textContent = `Distancia: ${distancia < 1000 ? 
+        `${Math.round(distancia)} metros` : 
+        `${(distancia/1000).toFixed(1)} km`}`;
+    }
+
+    function calcularRumbo(lat1, lon1, lat2, lon2) {
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const y = Math.sin(Δλ) * Math.cos(φ2);
+      const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+      const θ = Math.atan2(y, x);
+      return (θ*180/Math.PI + 360) % 360; // en grados
     }
 
     // Funciones auxiliares
