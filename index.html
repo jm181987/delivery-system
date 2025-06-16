@@ -7,93 +7,353 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    * {
-      -webkit-tap-highlight-color: transparent;
-      -webkit-touch-callout: none;
-    }
     body {
       font-family: 'Segoe UI', sans-serif;
-      background-color: #f8f9fa;
+      margin: 0;
+      padding: 10px;
       touch-action: manipulation;
-      overscroll-behavior-y: none;
-      padding-bottom: 20px;
+      -webkit-tap-highlight-color: transparent;
     }
     #mapa {
       height: 60vh;
-      min-height: 300px;
       width: 100%;
       border-radius: 8px;
       margin-bottom: 10px;
     }
-    .btn-touch {
-      padding: 12px 8px;
+    .btn-mobile {
+      padding: 10px;
       font-size: 1rem;
-      touch-action: manipulation;
     }
     .entrega-card {
-      background: #fff;
-      margin-bottom: 8px;
-      padding: 12px;
+      background: white;
       border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 8px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    .map-tooltip {
+    .tooltip {
       position: fixed;
       background: white;
       padding: 8px 12px;
       border-radius: 16px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
       z-index: 1000;
-      font-size: 14px;
-      max-width: 80%;
       pointer-events: none;
       display: none;
     }
-    .preview-marker {
+    .marker-preview {
+      background: #FF5722;
       width: 24px;
       height: 24px;
-      background: #FF5722;
       border-radius: 50%;
       border: 3px solid white;
-      box-shadow: 0 0 10px rgba(0,0,0,0.3);
-    }
-    .gps-active {
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-      100% { transform: scale(1); }
-    }
-    @media (max-width: 768px) {
-      #mapa {
-        height: 50vh;
-      }
-      .btn-touch {
-        padding: 14px 8px;
-      }
     }
   </style>
 </head>
 <body>
-  <div class="container py-2">
+  <div class="container">
     <h4 class="text-center mb-3">Gestor de Entregas</h4>
     <div id="mapa"></div>
     
     <div class="d-flex mb-3 gap-2">
-      <input type="text" id="direccion" class="form-control flex-grow-1" placeholder="Dirección o toque en el mapa">
-      <button id="agregar" class="btn btn-primary btn-touch">+</button>
+      <input type="text" id="input-direccion" class="form-control" placeholder="Dirección">
+      <button id="btn-agregar" class="btn btn-primary btn-mobile">Agregar</button>
     </div>
     
     <div class="d-grid gap-2 mb-3">
-      <button id="iniciar-gps" class="btn btn-success btn-touch gps-active">Activar GPS</button>
-      <button id="optimizar-ruta" class="btn btn-warning btn-touch" disabled>Optimizar Ruta</button>
+      <button id="btn-gps" class="btn btn-success btn-mobile">Activar GPS</button>
+      <button id="btn-optimizar" class="btn btn-warning btn-mobile" disabled>Optimizar</button>
     </div>
     
-    <div id="lista-direcciones" class="mb-3"></div>
+    <div id="lista-entregas"></div>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="app.js"></script>
+  <script>
+    // Variables globales
+    const entregas = JSON.parse(localStorage.getItem('entregas')) || [];
+    let mapa, marcadores = [], marcadorUsuario = null;
+    let polyline = null, watchId = null, posicionActual = null;
+    let previewMarker = null, tooltip = null;
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    // Inicialización
+    document.addEventListener('DOMContentLoaded', () => {
+      initMapa();
+      initUI();
+      cargarEntregas();
+    });
+
+    function initMapa() {
+      mapa = L.map('mapa', {
+        tap: !isMobile,
+        touchZoom: true,
+        dragging: true
+      }).setView([0, 0], 2);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+      }).addTo(mapa);
+
+      // Eventos táctiles
+      mapa.on(isMobile ? 'touchstart' : 'mousedown', iniciarSeleccion);
+      mapa.on(isMobile ? 'touchend' : 'mouseup', finalizarSeleccion);
+      mapa.on(isMobile ? 'touchmove' : 'mousemove', moverSeleccion);
+    }
+
+    function initUI() {
+      tooltip = document.createElement('div');
+      tooltip.className = 'tooltip';
+      document.body.appendChild(tooltip);
+
+      document.getElementById('btn-agregar').addEventListener('click', agregarDesdeInput);
+      document.getElementById('btn-gps').addEventListener('click', toggleGPS);
+      document.getElementById('btn-optimizar').addEventListener('click', optimizarRuta);
+    }
+
+    // Funciones de selección en mapa
+    function iniciarSeleccion(e) {
+      const latlng = isMobile ? 
+        mapa.containerPointToLatLng(L.point(e.originalEvent.touches[0].clientX, e.originalEvent.touches[0].clientY)) : 
+        e.latlng;
+
+      previewMarker = L.marker(latlng, {
+        icon: L.divIcon({
+          className: 'marker-preview',
+          iconSize: [30, 30]
+        }),
+        interactive: false
+      }).addTo(mapa);
+
+      tooltip.textContent = 'Suelta para agregar';
+      tooltip.style.display = 'block';
+      actualizarTooltip(e);
+    }
+
+    function moverSeleccion(e) {
+      if (!previewMarker) return;
+      
+      const latlng = isMobile ? 
+        mapa.containerPointToLatLng(L.point(e.originalEvent.touches[0].clientX, e.originalEvent.touches[0].clientY)) : 
+        e.latlng;
+
+      previewMarker.setLatLng(latlng);
+      actualizarTooltip(e);
+    }
+
+    function finalizarSeleccion(e) {
+      if (!previewMarker) return;
+      
+      const latlng = previewMarker.getLatLng();
+      limpiarSeleccion();
+      confirmarAgregarPunto(latlng);
+    }
+
+    function limpiarSeleccion() {
+      if (previewMarker) {
+        mapa.removeLayer(previewMarker);
+        previewMarker = null;
+      }
+      tooltip.style.display = 'none';
+    }
+
+    function actualizarTooltip(e) {
+      const x = isMobile ? e.originalEvent.touches[0].clientX : e.originalEvent.clientX;
+      const y = isMobile ? e.originalEvent.touches[0].clientY : e.originalEvent.clientY;
+      tooltip.style.left = `${x + 15}px`;
+      tooltip.style.top = `${y - 40}px`;
+    }
+
+    // Funciones principales
+    async function confirmarAgregarPunto(latlng) {
+      const direccion = await obtenerDireccion(latlng.lat, latlng.lng);
+      if (direccion) {
+        agregarEntrega({
+          direccion,
+          lat: latlng.lat,
+          lng: latlng.lng,
+          entregado: false
+        });
+      }
+    }
+
+    async function agregarDesdeInput() {
+      const input = document.getElementById('input-direccion');
+      const direccion = input.value.trim();
+      if (!direccion) return;
+
+      const datos = await geocodificarDireccion(direccion);
+      if (datos) {
+        agregarEntrega({...datos, entregado: false});
+        input.value = '';
+      } else {
+        alert('No se encontró la dirección');
+      }
+    }
+
+    function agregarEntrega(entrega) {
+      entregas.push(entrega);
+      guardarLocal();
+      agregarMarcador(entrega);
+      actualizarLista();
+      if (posicionActual) optimizarRuta();
+    }
+
+    function agregarMarcador(entrega) {
+      const marker = L.marker([entrega.lat, entrega.lng], {
+        icon: L.icon({
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+          iconSize: [25, 41]
+        })
+      }).addTo(mapa).bindPopup(entrega.direccion);
+      marcadores.push(marker);
+    }
+
+    // GPS y optimización
+    function toggleGPS() {
+      if (watchId) {
+        detenerGPS();
+        document.getElementById('btn-gps').textContent = 'Activar GPS';
+      } else {
+        iniciarGPS();
+        document.getElementById('btn-gps').textContent = 'Detener GPS';
+      }
+    }
+
+    function iniciarGPS() {
+      if (!navigator.geolocation) {
+        alert('GPS no disponible');
+        return;
+      }
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          posicionActual = {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude
+          };
+          actualizarPosicionUsuario();
+          optimizarRuta();
+          document.getElementById('btn-optimizar').disabled = false;
+        },
+        (err) => alert('Error GPS: ' + err.message),
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    }
+
+    function detenerGPS() {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      posicionActual = null;
+      document.getElementById('btn-optimizar').disabled = true;
+    }
+
+    function actualizarPosicionUsuario() {
+      if (!posicionActual) return;
+
+      if (!marcadorUsuario) {
+        marcadorUsuario = L.marker([posicionActual.lat, posicionActual.lng], {
+          icon: L.icon({
+            iconUrl: 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png',
+            iconSize: [32, 32]
+          })
+        }).addTo(mapa);
+      } else {
+        marcadorUsuario.setLatLng([posicionActual.lat, posicionActual.lng]);
+      }
+      mapa.setView([posicionActual.lat, posicionActual.lng], 15);
+    }
+
+    function optimizarRuta() {
+      if (!posicionActual || entregas.length < 2) return;
+
+      // Ordenar por distancia
+      const entregasOrdenadas = [...entregas].sort((a, b) => {
+        const distA = calcularDistancia(posicionActual.lat, posicionActual.lng, a.lat, a.lng);
+        const distB = calcularDistancia(posicionActual.lat, posicionActual.lng, b.lat, b.lng);
+        return distA - distB;
+      });
+
+      // Dibujar ruta
+      if (polyline) mapa.removeLayer(polyline);
+      const puntos = [posicionActual, ...entregasOrdenadas].map(p => [p.lat, p.lng]);
+      polyline = L.polyline(puntos, { color: 'blue' }).addTo(mapa);
+      
+      actualizarLista();
+    }
+
+    // Funciones auxiliares
+    function calcularDistancia(lat1, lon1, lat2, lon2) {
+      const R = 6371e3;
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function cargarEntregas() {
+      entregas.forEach(agregarMarcador);
+      actualizarLista();
+    }
+
+    function actualizarLista() {
+      const lista = document.getElementById('lista-entregas');
+      lista.innerHTML = entregas.map((entrega, i) => `
+        <div class="entrega-card">
+          <div class="d-flex justify-content-between">
+            <div>${entrega.direccion}</div>
+            <button onclick="marcarEntregada(${i})" class="btn btn-sm btn-danger">✓</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    window.marcarEntregada = function(index) {
+      if (confirm(`¿Marcar "${entregas[index].direccion}" como entregada?`)) {
+        entregas.splice(index, 1);
+        guardarLocal();
+        actualizarLista();
+        optimizarRuta();
+      }
+    };
+
+    function guardarLocal() {
+      localStorage.setItem('entregas', JSON.stringify(entregas));
+    }
+
+    // APIs externas
+    async function obtenerDireccion(lat, lng) {
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+        const data = await response.json();
+        return data.display_name || "Ubicación en mapa";
+      } catch (error) {
+        console.error("Error geocodificación inversa:", error);
+        return "Ubicación en mapa";
+      }
+    }
+
+    async function geocodificarDireccion(direccion) {
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(direccion)}&limit=1`);
+        const data = await response.json();
+        if (data.length > 0) {
+          return {
+            direccion: data[0].display_name,
+            lat: parseFloat(data[0].lat),
+            lng: parseFloat(data[0].lon)
+          };
+        }
+      } catch (error) {
+        console.error("Error geocodificación:", error);
+      }
+      return null;
+    }
+  </script>
 </body>
 </html>
