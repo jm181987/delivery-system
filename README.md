@@ -1,132 +1,23 @@
-Gestor de Entregas Inteligente con Optimización de Rutas
+# Gestor de entregas y rutas
 
+Aplicación web para organizar puntos de entrega, visualizar recorridos y calcular rutas utilizando servicios cartográficos.
 
-📌 Descripción
-Aplicación web para gestión y optimización de rutas de entrega en tiempo real, con soporte para dispositivos móviles y desktop. Utiliza algoritmos de optimización geográfica y geolocalización para calcular la ruta más eficiente, considerando:
+## Tecnologías
 
-Ubicación actual del repartidor (vía GPS)
+Leaflet, Bootstrap 5, Geolocation API, OpenStreetMap, Nominatim y OSRM.
 
-Proximidad entre puntos de entrega
+## Instalación y uso
 
-Reordenamiento dinámico según movimiento
+Abre `index.html` desde un servidor local. Permite acceso a ubicación en el navegador para el seguimiento GPS. Las APIs de mapas requieren conexión a Internet.
 
-🌟 Características principales
-🗺️ Funcionalidades del Mapa
-Selección interactiva de puntos (clic largo en mapa)
+Repositorio: https://github.com/jm181987/delivery-system
 
-Geocodificación inversa automática (coordenadas → dirección)
+## Seguridad y mantenimiento
 
-Visualización de rutas con diferentes estilos
+- No subas credenciales, tokens ni archivos de entorno.
+- Comprueba la configuración y los requisitos reales antes del despliegue.
+- Documenta incidencias y mejoras con pasos reproducibles.
 
-Marcadores inteligentes con información relevante
+## Créditos
 
-📱 Soporte Multiplataforma
-Interfaz responsive para móviles y desktop
-
-Eventos táctiles optimizados para Android/iOS
-
-Diseño adaptativo según tamaño de pantalla
-
-Controles táctiles grandes y accesibles
-
-🚀 Optimización de Rutas
-Algoritmo del vecino más cercano para cálculo inicial
-
-Reoptimización dinámica según movimiento
-
-Priorización de entregas cercanas
-
-Cálculo de distancias reales usando OSRM
-
-📊 Gestión de Entregas
-Listado interactivo de puntos de entrega
-
-Marcado de entregas completadas
-
-Notificaciones por proximidad
-
-Persistencia de datos (localStorage)
-
-🛠️ Tecnologías utilizadas
-Frontend:
-
-Leaflet.js (mapas interactivos)
-
-Bootstrap 5 (interfaz responsive)
-
-Web Geolocation API
-
-APIs Externas:
-
-OpenStreetMap (mapas base)
-
-Nominatim (geocodificación)
-
-OSRM (optimización de rutas)
-
-🚀 Cómo usar
-Agregar puntos de entrega:
-
-Escribe una dirección o haz clic prolongado en el mapa
-
-Confirma la ubicación en el diálogo emergente
-
-Activar seguimiento GPS:
-
-Toca "Activar GPS" para comenzar
-
-La ruta se calculará automáticamente desde tu posición
-
-Seguir la ruta optimizada:
-
-La línea azul muestra el camino óptimo
-
-Las tarjetas indican el orden de entrega
-
-Notificaciones al acercarse a un punto
-
-Marcar entregas completadas:
-
-Usa el botón ✓ en cada tarjeta
-
-La ruta se reoptimizará automáticamente
-
-📂 Estructura del proyecto
-text
-/
-├── index.html          # Interfaz principal
-├── app.js              # Lógica de la aplicación
-├── README.md           # Este archivo
-└── assets/
-    ├── screenshot.png  # Captura de pantalla
-    └── sonido.mp3      # Audio para notificaciones
-
-
-🌍 Demo en vivo
-Ver demostración en GitHub Pages
-
-📌 Requisitos
-Navegador moderno (Chrome, Firefox, Safari)
-
-Acceso a GPS (para seguimiento en tiempo real)
-
-Conexión a Internet (para APIs de mapas)
-
-⚠️ Limitaciones conocidas
-Precisión de direcciones depende de OpenStreetMap
-
-En áreas rurales puede haber menos detalle
-
-Uso prolongado de GPS afecta batería en móviles
-
-💡 Mejoras futuras
-Integración con API de Google Maps
-
-Modo offline con Service Workers
-
-Exportación/importación de rutas
-
-Compartir ubicación en tiempo real
-
-📄 Licencia
-Este proyecto está bajo licencia MIT. Ver archivo LICENSE para más detalles.
+Repositorio mantenido por **KNJ** · [KNJ Marketing](https://www.marketingknj.site/).
